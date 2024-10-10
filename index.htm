@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web GIS with TM3 and User Uploaded GeoJSON</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  </head>
+  <body>
+    <!-- Input untuk upload file GeoJSON -->
+    <input type="file" id="geojsonFile" accept=".geojson,.json" />
+
+    <!-- Input untuk pencarian koordinat -->
+    <div>
+      <input type="text" id="latInput" placeholder="Latitude" />
+      <input type="text" id="lngInput" placeholder="Longitude" />
+      <button id="searchButton">Search</button>
+      <button id="locateButton">Locate Me</button>
+    </div>
+
+    <div id="map" style="width: 100%; height: 500px"></div>
+
+    <script>
+      // Variabel untuk peta dan layer
+      var map;
+      var userGeojsonLayer; // Layer untuk menyimpan data GeoJSON dari pengguna
+
+      // Fungsi untuk inisialisasi peta
+      function initMap() {
+        if (map) {
+          return;
+        }
+
+        map = L.map("map").setView([-6.9147, 107.6098], 5); // Pusat di Indonesia
+
+        // Basemap dari OpenStreetMap
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          attribution: "© OpenStreetMap contributors",
+        }).addTo(map);
+      }
+
+      // Fungsi untuk menampilkan popup pada setiap fitur TM3
+      function onEachFeature(feature, layer) {
+        if (
+          feature.properties &&
+          feature.properties.TM3_ZONA &&
+          feature.properties.UTM_ZONA
+        ) {
+          layer.bindPopup(
+            "<b>TM3 Zona:</b> " +
+              feature.properties.TM3_ZONA +
+              "<br>" +
+              "<b>UTM Zona:</b> " +
+              feature.properties.UTM_ZONA
+          );
+        }
+      }
+
+      // Fungsi untuk memuat data GeoJSON TM3
+      function loadTM3Data() {
+        fetch("./data/tm3.geojson")
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                "Network response was not ok " + response.statusText
+              );
+            }
+            return response.json();
+          })
+          .then((data) => {
+            L.geoJSON(data, {
+              style: {
+                color: "blue",
+                weight: 2,
+              },
+              onEachFeature: onEachFeature,
+            }).addTo(map);
+          })
+          .catch((error) => console.error("Error loading TM3 GeoJSON:", error));
+      }
+
+      // Fungsi untuk memusatkan peta ke lokasi berdasarkan koordinat
+      function centerMap(lat, lng) {
+        map.setView([lat, lng], 13); // Zoom level 13
+        L.marker([lat, lng]).addTo(map); // Tambahkan marker di lokasi tersebut
+      }
+
+      // Inisialisasi peta dan muat data TM3
+      initMap();
+      loadTM3Data();
+
+      // Event listener untuk menangani upload file GeoJSON dari pengguna
+      document
+        .getElementById("geojsonFile")
+        .addEventListener("change", function (e) {
+          var file = e.target.files[0];
+          var reader = new FileReader();
+
+          reader.onload = function (event) {
+            var userGeojsonData = JSON.parse(event.target.result);
+
+            // Jika layer sudah ada, hapus layer sebelumnya
+            if (userGeojsonLayer) {
+              map.removeLayer(userGeojsonLayer);
+            }
+
+            // Tambahkan GeoJSON pengguna ke peta
+            userGeojsonLayer = L.geoJSON(userGeojsonData, {
+              style: {
+                color: "red",
+                weight: 2,
+              },
+            }).addTo(map);
+
+            // Zoom ke extent dari fitur yang diupload
+            var bounds = userGeojsonLayer.getBounds();
+            map.fitBounds(bounds);
+          };
+
+          reader.readAsText(file);
+        });
+
+      // Event listener untuk pencarian koordinat
+      document
+        .getElementById("searchButton")
+        .addEventListener("click", function () {
+          var lat = parseFloat(document.getElementById("latInput").value);
+          var lng = parseFloat(document.getElementById("lngInput").value);
+          if (!isNaN(lat) && !isNaN(lng)) {
+            centerMap(lat, lng);
+          } else {
+            alert("Masukkan koordinat yang valid!");
+          }
+        });
+
+      // Event listener untuk deteksi posisi pengguna
+      document
+        .getElementById("locateButton")
+        .addEventListener("click", function () {
+          map.locate({ setView: true, maxZoom: 13 });
+        });
+
+      // Event ketika lokasi pengguna ditemukan
+      map.on("locationfound", function (e) {
+        L.marker(e.latlng).addTo(map).bindPopup("You are here!").openPopup();
+        map.setView(e.latlng, 13);
+      });
+
+      // Event ketika lokasi pengguna tidak ditemukan
+      map.on("locationerror", function (e) {
+        alert(e.message);
+      });
+    </script>
+  </body>
+</html>
